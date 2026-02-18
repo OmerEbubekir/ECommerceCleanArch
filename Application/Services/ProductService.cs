@@ -1,11 +1,11 @@
-﻿using AutoMapper; // Bu namespace gerekli
+﻿using AutoMapper; 
 using Application.DTOs;
 using Application.Interfaces;
 using Core.Entities;
 using Core.Interfaces;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-
+using System.Linq.Expressions;
 namespace Application.Services
 {
     public class ProductService : IProductService
@@ -23,7 +23,7 @@ namespace Application.Services
         public async Task<IReadOnlyList<ProductDto>> GetProductsAsync()
         {
             // 1. Veriyi Repository'den çek (Veritabanından Entity gelir)
-            var products = await _unitOfWork.Repository<Product>().ListAllAsync(p => p.Category);
+            var products = await _unitOfWork.Repository<Product>().ListAllAsync(false,p => p.Category);
             // 2. Entity -> DTO Dönüşümü (AutoMapper ile)
             // Okunuşu: "products listesini al, IReadOnlyList<ProductDto> tipine çevir."
             var productDtos = _mapper.Map<IReadOnlyList<ProductDto>>(products);
@@ -34,7 +34,7 @@ namespace Application.Services
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
             
-            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id, p => p.Category);
+            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id,false, p => p.Category);
 
             if (product == null) return null;
 
@@ -78,6 +78,22 @@ namespace Application.Services
 
             // 4. Kaydet
             await _unitOfWork.Complete();
+        }
+
+        public async Task<bool> DeleteProductAsync(int id)
+        {
+            // 1. Ürünü Bul
+            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id);
+
+            if (product == null) return false; // Veya exception fırlatılabilir.
+
+            // 2. Soft Delete uygula
+            await _unitOfWork.Repository<Product>().DeleteAsync(product);
+
+            // 3. Kaydet
+            var result = await _unitOfWork.Complete();
+
+            return result > 0;
         }
     }
 }

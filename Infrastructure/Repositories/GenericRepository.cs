@@ -24,18 +24,28 @@ namespace Infrastructure.Repositories
             return entity;  
         }
 
-        public Task DeleteAsync(T entity)
+        public async Task DeleteAsync(T entity)
         {
-           _context.Set<T>().Remove(entity);
-            return Task.CompletedTask;
+            // ESKİSİ: _context.Set<T>().Remove(entity);
+
+            // YENİSİ (Soft Delete):
+            entity.IsDeleted = true;
+            _context.Set<T>().Update(entity); // Remove değil Update!
+
+            // Asenkron arayüze uymak için
+            await Task.CompletedTask;
         }
 
-        public async Task<T> GetByIdAsync(int id, params Expression<Func<T, object>>[] includes)
+        public async Task<T> GetByIdAsync(int id, bool ignoreQueryFilters = false, params Expression<Func<T, object>>[] includes)
         {
-            // 1. Sorguyu IQueryable olarak başlat (Henüz DB'ye gitmedi)
             IQueryable<T> query = _context.Set<T>();
 
-            // 2. Include'ları ekle (Varsa)
+            // Eğer "Filtreyi Boşver" denildiyse, EF Core'a bunu bildir.
+            if (ignoreQueryFilters)
+            {
+                query = query.IgnoreQueryFilters();
+            }
+
             if (includes != null)
             {
                 foreach (var include in includes)
@@ -44,17 +54,20 @@ namespace Infrastructure.Repositories
                 }
             }
 
-            // 3. Veriyi ID'ye göre filtrele ve getir.
-            // BaseEntity içindeki "ID" property'sini kullanıyoruz.
+            // SingleOrDefault yerine FirstOrDefault daha güvenlidir.
             return await query.FirstOrDefaultAsync(x => x.ID == id);
         }
 
-        public async Task<IReadOnlyList<T>> ListAllAsync(params Expression<Func<T, object>>[] includes)
+        public async Task<IReadOnlyList<T>> ListAllAsync(bool ignoreQueryFilters = false, params Expression<Func<T, object>>[] includes)
         {
-            // Query'yi başlatıyoruz ama hemen veritabanına gitmiyoruz (IQueryable)
             IQueryable<T> query = _context.Set<T>().AsNoTracking();
 
-            // Eğer parametre olarak "Category'yi de getir" dendiyse, query'ye ekliyoruz.
+            // Global query filter'ları devre dışı bırakmak isteniyorsa, EF Core'a bunu bildir.
+            if (ignoreQueryFilters)
+            {
+                query = query.IgnoreQueryFilters();
+            }
+
             if (includes != null)
             {
                 foreach (var include in includes)
@@ -63,10 +76,8 @@ namespace Infrastructure.Repositories
                 }
             }
 
-            // ToListAsync dediğimiz an sorgu çalışır ve veriler dolu gelir.
             return await query.ToListAsync();
         }
-
         public Task UpdateAsync(T entity)
         {
            _context.Entry(entity).State = EntityState.Modified;

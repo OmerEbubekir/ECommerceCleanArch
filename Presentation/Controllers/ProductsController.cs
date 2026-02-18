@@ -71,5 +71,19 @@ namespace Presentation.Controllers
                 return BadRequest(ex.Message); // Şimdilik basit hata dönüşü.
             }   
         }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            var result = await _productService.DeleteProductAsync(id);
+
+            if (!result)
+            {
+                return NotFound($"Product with id {id} not found.");
+            }
+
+            // 204 No Content: Başarıyla sildim (gizledim), dönecek veri yok.
+            return NoContent();
+        }
     }
 }

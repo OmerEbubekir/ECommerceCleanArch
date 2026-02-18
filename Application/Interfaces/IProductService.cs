@@ -12,5 +12,6 @@ namespace Application.Interfaces
         Task<ProductDto> CreateProductAsync(CreateProductDto createProductDto);
 
         Task UpdateProductAsync(UpdateProductDto updateProductDto);
+        Task<bool> DeleteProductAsync(int id);
     }
 }

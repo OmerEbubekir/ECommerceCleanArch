@@ -47,7 +47,7 @@ namespace ECommerceCleanArch.Tests
 
             // Senaryo: Repository'nin ListAllAsync metodu çaðrýldýðýnda, yukarýdaki sahte listeyi dön.
             // It.IsAny<Expression...>() kýsmý: "Include parametresi ne gelirse gelsin fark etmez" demek.
-            _mockProductRepo.Setup(repo => repo.ListAllAsync(It.IsAny<Expression<Func<Product, object>>[]>()))
+            _mockProductRepo.Setup(repo => repo.ListAllAsync(false,It.IsAny<Expression<Func<Product, object>>[]>()))
                             .ReturnsAsync(products);
 
             // Senaryo: Mapper çaðrýldýðýnda sahte DTO listesini dön.
@@ -107,5 +107,43 @@ namespace ECommerceCleanArch.Tests
             Assert.NotNull(result);
             Assert.Equal(resultDto.Id, result.Id);
         }
+
+
+        [Fact]
+        public async Task DeleteProductAsync_ShouldSoftDelete_WhenProductExists()
+        {
+            // 1. ARRANGE
+            int productId = 1;
+            var existingProduct = new Product("Test", "Desc", 10, 1);
+            existingProduct.ID = productId; // ID'yi eþle
+
+            // HATALI OLAN KISIM BURASIYDI:
+            // _mockProductRepo.Setup(r => r.GetByIdAsync(productId, false, null)).ReturnsAsync(existingProduct);
+
+            // DÜZELTÝLMÝÞ HALÝ:
+            // It.IsAny<bool>() -> True da gelse false da gelse kabul et.
+            // It.IsAny<Expression...>() -> Include gelse de gelmese de kabul et.
+            _mockProductRepo.Setup(r => r.GetByIdAsync(productId, It.IsAny<bool>(), It.IsAny<Expression<Func<Product, object>>[]>()))
+                            .ReturnsAsync(existingProduct);
+
+            // Delete (Update) metodu çaðrýldýðýnda hiçbir þey yapma (Task tamamla)
+            _mockProductRepo.Setup(r => r.DeleteAsync(existingProduct))
+                            .Returns(Task.CompletedTask);
+
+            // UnitOfWork Complete çaðrýlýnca 1 dön (Baþarýlý)
+            _mockUnitOfWork.Setup(u => u.Complete()).ReturnsAsync(1);
+
+            var productService = new ProductService(_mockUnitOfWork.Object, _mockMapper.Object);
+
+            // 2. ACT
+            var result = await productService.DeleteProductAsync(productId);
+
+            // 3. ASSERT
+            Assert.True(result); // Þimdi True dönmeli.
+
+            // Verify ederken de esnek davranýyoruz
+            _mockProductRepo.Verify(r => r.DeleteAsync(It.Is<Product>(p => p.ID == productId)), Times.Once);
+        }
+
     }
 }

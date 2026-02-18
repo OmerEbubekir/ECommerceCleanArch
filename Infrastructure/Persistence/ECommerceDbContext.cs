@@ -20,6 +20,9 @@ namespace Infrastructure.Persistence
             base.OnModelCreating(modelBuilder);
             
             modelBuilder.ApplyConfigurationsFromAssembly(System.Reflection.Assembly.GetExecutingAssembly());
+            //Global Query Filter: Silinen ürünler ve kategoriler varsayılan olarak sorgulardan hariç tutulur.
+            modelBuilder.Entity<Core.Entities.Product>().HasQueryFilter(p => !p.IsDeleted);
+            modelBuilder.Entity<Core.Entities.Category>().HasQueryFilter(c => !c.IsDeleted);
         }
 
     }
