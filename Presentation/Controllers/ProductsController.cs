@@ -1,5 +1,6 @@
 ﻿using Application.DTOs;
 using Application.Interfaces;
+using Core.Specifications;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Presentation.Controllers
@@ -21,12 +22,11 @@ namespace Presentation.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetProducts()
+        // [FromQuery]: Verileri URL'den (?pageIndex=1...) oku demektir.
+        public async Task<IActionResult> GetProducts([FromQuery] ProductSpecParams productParams)
         {
-            var products = await _productService.GetProductsAsync();
-
-            // 200 OK döner ve veriyi JSON olarak basar.
-            return Ok(products);
+            var result = await _productService.GetProductsAsync(productParams);
+            return Ok(result);
         }
 
         [HttpGet("{id}")]

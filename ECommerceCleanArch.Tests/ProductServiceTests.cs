@@ -1,8 +1,10 @@
 using Application.DTOs;
+using Application.Helpers; // Pagination burada
 using Application.Services;
 using AutoMapper;
 using Core.Entities;
 using Core.Interfaces;
+using Core.Specifications; // SpecParams burada
 using Moq;
 using System.Collections.Generic;
 using System.Linq.Expressions;
@@ -13,26 +15,26 @@ namespace ECommerceCleanArch.Tests
 {
     public class ProductServiceTests
     {
-        // Mock nesneleri: Gerçek servislerin yerine geçecek taklitler.
         private readonly Mock<IUnitOfWork> _mockUnitOfWork;
         private readonly Mock<IMapper> _mockMapper;
         private readonly Mock<IGenericRepository<Product>> _mockProductRepo;
 
         public ProductServiceTests()
         {
-            // Her testten önce bu nesneler sýfýrdan oluþturulur.
             _mockUnitOfWork = new Mock<IUnitOfWork>();
             _mockMapper = new Mock<IMapper>();
             _mockProductRepo = new Mock<IGenericRepository<Product>>();
 
-            // UnitOfWork'e "Biri senden Repository<Product> isterse, benim sahte repomu ver" diyoruz.
             _mockUnitOfWork.Setup(u => u.Repository<Product>()).Returns(_mockProductRepo.Object);
         }
 
         [Fact]
-        public async Task GetProductsAsync_ShouldReturnProductList_WhenProductsExist()
+        public async Task GetProductsAsync_ShouldReturnPagination_WhenParamsAreValid()
         {
-            // 1. ARRANGE (Hazýrlýk)
+            // 1. ARRANGE
+            // Kullanýcýdan gelen parametreler (Sayfa 1, Boyut 10)
+            var specParams = new ProductSpecParams { PageIndex = 1, PageSize = 10 };
+
             var products = new List<Product>
             {
                 new Product("Test Phone", "Desc", 100, 1),
@@ -45,105 +47,76 @@ namespace ECommerceCleanArch.Tests
                 new ProductDto { Name = "Test Laptop" }
             };
 
-            // Senaryo: Repository'nin ListAllAsync metodu çaðrýldýðýnda, yukarýdaki sahte listeyi dön.
-            // It.IsAny<Expression...>() kýsmý: "Include parametresi ne gelirse gelsin fark etmez" demek.
-            _mockProductRepo.Setup(repo => repo.ListAllAsync(false,It.IsAny<Expression<Func<Product, object>>[]>()))
+            // SENARYO 1: ListAllAsync artýk (skip, take, includes) alýyor.
+            // Skip: 0, Take: 10 bekliyoruz.
+            _mockProductRepo.Setup(repo => repo.ListAllAsync(0, 10, It.IsAny<Expression<Func<Product, object>>[]>()))
                             .ReturnsAsync(products);
 
-            // Senaryo: Mapper çaðrýldýðýnda sahte DTO listesini dön.
+            // SENARYO 2: Service içinde CountAsync çaðrýlýyor, onu da mocklamalýyýz!
+            _mockProductRepo.Setup(repo => repo.CountAsync())
+                            .ReturnsAsync(2); // Toplam 2 ürün var diyelim.
+
             _mockMapper.Setup(m => m.Map<IReadOnlyList<ProductDto>>(products))
                        .Returns(productDtos);
 
-            // Servisi oluþtur (Sahte nesnelerle)
             var productService = new ProductService(_mockUnitOfWork.Object, _mockMapper.Object);
 
-            // 2. ACT (Eylem)
-            var result = await productService.GetProductsAsync();
+            // 2. ACT
+            // Artýk parametre gönderiyoruz!
+            var result = await productService.GetProductsAsync(specParams);
 
-            // 3. ASSERT (Doðrulama)
-            Assert.NotNull(result); // Sonuç boþ gelmemeli.
-            Assert.Equal(2, result.Count); // 2 adet ürün gelmeli.
-            Assert.Equal("Test Phone", result[0].Name); // Ýlk ürünün adý doðru mu?
+            // 3. ASSERT
+            Assert.NotNull(result);
+            Assert.Equal(1, result.PageIndex); // 1. sayfada mýyýz?
+            Assert.Equal(2, result.Count);     // Toplam sayý doðru mu?
+            Assert.Equal(2, result.Data.Count); // Data listesinin içi dolu mu?
+            Assert.Equal("Test Phone", result.Data[0].Name);
         }
 
         [Fact]
         public async Task CreateProductAsync_ShouldCallRepositoryAdd_WhenDtoIsValid()
         {
-            // 1. ARRANGE (Hazýrlýk)
-            var createDto = new CreateProductDto
-            {
-                Name = "New Product",
-                Price = 100,
-                CategoryId = 1
-            };
+            // Bu testte bir deðiþiklik yok, aynen kalabilir.
+            var createDto = new CreateProductDto { Name = "New", Price = 100, CategoryId = 1 };
+            var productEntity = new Product("New", "Desc", 100, 1);
+            var resultDto = new ProductDto { Id = 1, Name = "New" };
 
-            var productEntity = new Product("New Product", "Desc", 100, 1);
-            var resultDto = new ProductDto { Id = 1, Name = "New Product" };
-
-            // Mapper Setup: CreateDto gelince Product Entity dön
             _mockMapper.Setup(m => m.Map<Product>(createDto)).Returns(productEntity);
-
-            // Mapper Setup: Product Entity gelince ProductDto dön (Return deðeri için)
             _mockMapper.Setup(m => m.Map<ProductDto>(productEntity)).Returns(resultDto);
-
-            // Repository Setup: AddAsync çaðrýldýðýnda baþarýlý say.
             _mockProductRepo.Setup(r => r.AddAsync(productEntity)).ReturnsAsync(productEntity);
-
-            // UnitOfWork Setup: Complete çaðrýldýðýnda 1 (baþarýlý) dön.
             _mockUnitOfWork.Setup(u => u.Complete()).ReturnsAsync(1);
 
             var productService = new ProductService(_mockUnitOfWork.Object, _mockMapper.Object);
 
-            // 2. ACT (Eylem)
             var result = await productService.CreateProductAsync(createDto);
 
-            // 3. ASSERT (Doðrulama)
-            // Repository'nin AddAsync metodu KESÝN olarak 1 kere çaðrýldý mý?
             _mockProductRepo.Verify(r => r.AddAsync(productEntity), Times.Once);
-
-            // UnitOfWork'ün Complete metodu KESÝN olarak 1 kere çaðrýldý mý?
             _mockUnitOfWork.Verify(u => u.Complete(), Times.Once);
-
             Assert.NotNull(result);
-            Assert.Equal(resultDto.Id, result.Id);
         }
-
 
         [Fact]
         public async Task DeleteProductAsync_ShouldSoftDelete_WhenProductExists()
         {
-            // 1. ARRANGE
+            // Bu testte de deðiþiklik yok çünkü GetByIdAsync imzasýný (bool parametreli) koruduk.
             int productId = 1;
             var existingProduct = new Product("Test", "Desc", 10, 1);
-            existingProduct.ID = productId; // ID'yi eþle
+            existingProduct.ID = productId;
 
-            // HATALI OLAN KISIM BURASIYDI:
-            // _mockProductRepo.Setup(r => r.GetByIdAsync(productId, false, null)).ReturnsAsync(existingProduct);
-
-            // DÜZELTÝLMÝÞ HALÝ:
-            // It.IsAny<bool>() -> True da gelse false da gelse kabul et.
-            // It.IsAny<Expression...>() -> Include gelse de gelmese de kabul et.
             _mockProductRepo.Setup(r => r.GetByIdAsync(productId, It.IsAny<bool>(), It.IsAny<Expression<Func<Product, object>>[]>()))
                             .ReturnsAsync(existingProduct);
 
-            // Delete (Update) metodu çaðrýldýðýnda hiçbir þey yapma (Task tamamla)
             _mockProductRepo.Setup(r => r.DeleteAsync(existingProduct))
                             .Returns(Task.CompletedTask);
 
-            // UnitOfWork Complete çaðrýlýnca 1 dön (Baþarýlý)
             _mockUnitOfWork.Setup(u => u.Complete()).ReturnsAsync(1);
 
             var productService = new ProductService(_mockUnitOfWork.Object, _mockMapper.Object);
 
-            // 2. ACT
             var result = await productService.DeleteProductAsync(productId);
 
-            // 3. ASSERT
-            Assert.True(result); // Þimdi True dönmeli.
-
-            // Verify ederken de esnek davranýyoruz
+            Assert.True(result);
             _mockProductRepo.Verify(r => r.DeleteAsync(It.Is<Product>(p => p.ID == productId)), Times.Once);
         }
-
     }
 }

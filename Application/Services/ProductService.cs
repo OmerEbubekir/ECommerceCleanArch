@@ -1,98 +1,85 @@
-﻿using AutoMapper; 
-using Application.DTOs;
+﻿using Application.DTOs;
+using Application.Helpers;
 using Application.Interfaces;
+using AutoMapper;
 using Core.Entities;
 using Core.Interfaces;
+using Core.Specifications;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Linq.Expressions;
+
 namespace Application.Services
 {
     public class ProductService : IProductService
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper; 
-        
-        
+        private readonly IMapper _mapper;
+
         public ProductService(IUnitOfWork unitOfWork, IMapper mapper)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
         }
 
-        public async Task<IReadOnlyList<ProductDto>> GetProductsAsync()
+        // 1. GET ALL (PAGINATION)
+        public async Task<Pagination<ProductDto>> GetProductsAsync(ProductSpecParams productParams)
         {
-            // 1. Veriyi Repository'den çek (Veritabanından Entity gelir)
-            var products = await _unitOfWork.Repository<Product>().ListAllAsync(false,p => p.Category);
-            // 2. Entity -> DTO Dönüşümü (AutoMapper ile)
-            // Okunuşu: "products listesini al, IReadOnlyList<ProductDto> tipine çevir."
-            var productDtos = _mapper.Map<IReadOnlyList<ProductDto>>(products);
+            var skip = (productParams.PageIndex - 1) * productParams.PageSize;
+            var take = productParams.PageSize;
 
-            return productDtos;
+            // HATA BURADAYDI: Eskiden burada 'false' (bool) vardı. Onu sildik.
+            // Artık sıra şöyle: Skip(int), Take(int), Includes(params)
+            var products = await _unitOfWork.Repository<Product>()
+                                            .ListAllAsync(skip, take, p => p.Category);
+
+            var totalItems = await _unitOfWork.Repository<Product>().CountAsync();
+            var data = _mapper.Map<IReadOnlyList<ProductDto>>(products);
+
+            return new Pagination<ProductDto>(productParams.PageIndex, productParams.PageSize, totalItems, data);
         }
 
+        // 2. GET BY ID
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
-            
-            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id,false, p => p.Category);
+            // Buradaki 'false' parametresi duruyor çünkü GetByIdAsync imzasında (int, bool, params) var.
+            var product = await _unitOfWork.Repository<Product>()
+                                           .GetByIdAsync(id, false, p => p.Category);
 
             if (product == null) return null;
-
             return _mapper.Map<ProductDto>(product);
         }
 
+        // 3. CREATE
         public async Task<ProductDto> CreateProductAsync(CreateProductDto createProductDto)
         {
-            // 1. DTO -> Entity Dönüşümü
-            
             var productEntity = _mapper.Map<Product>(createProductDto);
-
-            // 2. Veritabanına Ekle (Hafızada)
             await _unitOfWork.Repository<Product>().AddAsync(productEntity);
-
-            // 3. Kaydet (SQL'e Git)
             var result = await _unitOfWork.Complete();
-
-            if (result <= 0) return null; // Kayıt başarısızsa
-
-            // 4. Oluşan Entity'yi -> DTO'ya çevirip geri dön (Client ID'yi görsün diye)
+            if (result <= 0) return null;
             return _mapper.Map<ProductDto>(productEntity);
         }
 
+        // 4. UPDATE
         public async Task UpdateProductAsync(UpdateProductDto updateProductDto)
         {
-            
-
             var product = await _unitOfWork.Repository<Product>().GetByIdAsync(updateProductDto.Id);
+            if (product == null) throw new Exception("Ürün bulunamadı");
 
-            if (product == null)
-            {
-                throw new Exception("Ürün bulunamadı"); 
-            }
-
-            // 2. DTO'daki verilerle Entity'i güncelle (AutoMapper ile)
             _mapper.Map(updateProductDto, product);
-
-            // 3. Update metodunu çağır (State'i Modified yapar)
             await _unitOfWork.Repository<Product>().UpdateAsync(product);
-
-            // 4. Kaydet
             await _unitOfWork.Complete();
         }
 
+        // 5. DELETE
         public async Task<bool> DeleteProductAsync(int id)
         {
-            // 1. Ürünü Bul
+            // Delete işleminde de 'ignoreQueryFilters: false' (varsayılan)
             var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id);
+            if (product == null) return false;
 
-            if (product == null) return false; // Veya exception fırlatılabilir.
-
-            // 2. Soft Delete uygula
             await _unitOfWork.Repository<Product>().DeleteAsync(product);
-
-            // 3. Kaydet
             var result = await _unitOfWork.Complete();
-
             return result > 0;
         }
     }
