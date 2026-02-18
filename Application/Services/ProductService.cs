@@ -23,8 +23,7 @@ namespace Application.Services
         public async Task<IReadOnlyList<ProductDto>> GetProductsAsync()
         {
             // 1. Veriyi Repository'den çek (Veritabanından Entity gelir)
-            var products = await _unitOfWork.Repository<Product>().ListAllAsync();
-
+            var products = await _unitOfWork.Repository<Product>().ListAllAsync(p => p.Category);
             // 2. Entity -> DTO Dönüşümü (AutoMapper ile)
             // Okunuşu: "products listesini al, IReadOnlyList<ProductDto> tipine çevir."
             var productDtos = _mapper.Map<IReadOnlyList<ProductDto>>(products);
@@ -34,11 +33,11 @@ namespace Application.Services
 
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
-            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id);
+            
+            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id, p => p.Category);
 
             if (product == null) return null;
 
-            // Tekil nesne dönüşümü
             return _mapper.Map<ProductDto>(product);
         }
     }
