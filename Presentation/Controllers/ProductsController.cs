@@ -42,5 +42,34 @@ namespace Presentation.Controllers
 
             return Ok(product);
         }
+
+        [HttpPost]
+        public async Task<IActionResult> CreateProduct([FromBody] CreateProductDto createProductDto)
+        {
+            // Validasyon burada otomatik çalışır.
+            // Eğer kurala uymazsa, Controller metoduna girmeden 400 Bad Request döner.
+
+            var newProduct = await _productService.CreateProductAsync(createProductDto);
+
+            // 201 Created: "Başarıyla oluşturuldu" standardıdır.
+            // Response Header'da yeni ürünün URL'ini de döneriz (nameof(GetProductById)).
+            return CreatedAtAction(nameof(GetProductById), new { id = newProduct.Id }, newProduct);
+        }
+
+        [HttpPut] // Güncelleme için PUT kullanılır.
+        public async Task<IActionResult> UpdateProduct([FromBody] UpdateProductDto updateProductDto)
+        {
+            try
+            {
+                
+
+                await _productService.UpdateProductAsync(updateProductDto);
+                return NoContent(); // 204 No Content: "İşlem başarılı ama sana dönecek verim yok."
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message); // Şimdilik basit hata dönüşü.
+            }   
+        }
     }
 }

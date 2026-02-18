@@ -9,5 +9,8 @@ namespace Application.Interfaces
         
         Task<IReadOnlyList<ProductDto>> GetProductsAsync();
         Task<ProductDto> GetProductByIdAsync(int id);
+        Task<ProductDto> CreateProductAsync(CreateProductDto createProductDto);
+
+        Task UpdateProductAsync(UpdateProductDto updateProductDto);
     }
 }

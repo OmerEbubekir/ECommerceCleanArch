@@ -40,5 +40,44 @@ namespace Application.Services
 
             return _mapper.Map<ProductDto>(product);
         }
+
+        public async Task<ProductDto> CreateProductAsync(CreateProductDto createProductDto)
+        {
+            // 1. DTO -> Entity Dönüşümü
+            
+            var productEntity = _mapper.Map<Product>(createProductDto);
+
+            // 2. Veritabanına Ekle (Hafızada)
+            await _unitOfWork.Repository<Product>().AddAsync(productEntity);
+
+            // 3. Kaydet (SQL'e Git)
+            var result = await _unitOfWork.Complete();
+
+            if (result <= 0) return null; // Kayıt başarısızsa
+
+            // 4. Oluşan Entity'yi -> DTO'ya çevirip geri dön (Client ID'yi görsün diye)
+            return _mapper.Map<ProductDto>(productEntity);
+        }
+
+        public async Task UpdateProductAsync(UpdateProductDto updateProductDto)
+        {
+            
+
+            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(updateProductDto.Id);
+
+            if (product == null)
+            {
+                throw new Exception("Ürün bulunamadı"); 
+            }
+
+            // 2. DTO'daki verilerle Entity'i güncelle (AutoMapper ile)
+            _mapper.Map(updateProductDto, product);
+
+            // 3. Update metodunu çağır (State'i Modified yapar)
+            await _unitOfWork.Repository<Product>().UpdateAsync(product);
+
+            // 4. Kaydet
+            await _unitOfWork.Complete();
+        }
     }
 }

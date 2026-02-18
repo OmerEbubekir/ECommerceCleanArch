@@ -16,7 +16,10 @@ namespace Application.Helpers
             // CreateMap<Kaynak, Hedef>();
             CreateMap<Product, ProductDto>()
                 .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
-                .ReverseMap(); 
+                .ReverseMap();
+
+            CreateMap<CreateProductDto, Product>();
+            CreateMap<UpdateProductDto, Product>();
         }
     }
 }
